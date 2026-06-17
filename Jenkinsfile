@@ -1,87 +1,55 @@
-@Library('Shared') _
 pipeline {
     agent any
     
-    environment{
-        SONAR_HOME = tool "Sonar"
+    environment {
+        AWS_BUCKET_NAME = 'your-bank-artifact-bucket'
+        AWS_REGION      = 'ap-south-1'
+        TARGET_EC2_IP   = '13.233.162.252 '// Since everything is running locally on this instance
+        TOMCAT_USER     = 'ubuntu'
+        DOCKER_REGISTRY = 'localhost:5000'
+        IMAGE_NAME      = 'banking-portal'
+        BUILD_VER       = "1.0.${BUILD_NUMBER}"
     }
     
-    parameters {
-        string(name: 'DOCKER_TAG', defaultValue: '', description: 'Setting docker image for latest push')
+    tools {
+        maven 'Maven 3.8.5'
     }
-    
+
     stages {
-        
-        stage("Workspace cleanup"){
-            steps{
-                script{
-                    cleanWs()
-                }
-            }
-        }
-        
-        stage('Git: Code Checkout') {
+        stage('Phase 1: Build Automation') {
             steps {
-                script{
-                    code_checkout("https://github.com/LondheShubham153/Springboot-BankApp.git","DevOps")
-                }
+                sh 'mvn clean test package -Dbuild.version=${BUILD_VER}'
             }
         }
-        
-        stage("Trivy: Filesystem scan"){
-            steps{
-                script{
-                    trivy_scan()
+
+        stage('Phase 2: Artifact Management') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+                    sh "aws s3 cp target/banking-portal.war s3://${AWS_BUCKET_NAME}/builds/banking-portal-${BUILD_VER}.war --region ${AWS_REGION}"
                 }
             }
         }
 
-        stage("OWASP: Dependency check"){
-            steps{
-                script{
-                    owasp_dependency()
-                }
-            }
-        }
-        
-        stage("SonarQube: Code Analysis"){
-            steps{
-                script{
-                    sonarqube_analysis("Sonar","bankapp","bankapp")
-                }
-            }
-        }
-        
-        stage("SonarQube: Code Quality Gates"){
-            steps{
-                script{
-                    sonarqube_code_quality()
-                }
+        stage('Phase 3: Standard Tomcat Deployment') {
+            steps {
+                // Since Tomcat is on the SAME instance as Jenkins, copy files locally
+                sh "sudo systemctl stop tomcat"
+                sh "sudo rm -rf /opt/tomcat/webapps/ROOT*"
+                sh "sudo cp target/banking-portal.war /opt/tomcat/webapps/ROOT.war"
+                sh "sudo systemctl start tomcat"
+                sh "sleep 15"
+                sh 'curl -sI http://localhost:8080/ | grep "200 OK"'
             }
         }
 
-        stage("Docker: Build Images"){
-            steps{
-                script{
-                    docker_build("bankapp","${params.DOCKER_TAG}","madhupdevops")
+        stage('Phase 4: Containerization') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER} ."
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER}"
+                    sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
             }
-        }
-        
-        stage("Docker: Push to DockerHub"){
-            steps{
-                script{
-                    docker_push("bankapp","${params.DOCKER_TAG}","madhupdevops")
-                }
-            }
-        }
-    }
-    post{
-        success{
-            archiveArtifacts artifacts: '*.xml', followSymlinks: false
-            build job: "BankApp-CD", parameters: [
-                string(name: 'DOCKER_TAG', value: "${params.DOCKER_TAG}")
-            ]
         }
     }
 }
