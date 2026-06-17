@@ -2,7 +2,7 @@ pipeline {
     agent any
     
     environment {
-        AWS_BUCKET_NAME = 'your-bank-artifact-bucket'
+        AWS_BUCKET_NAME = 'bank-artifact-bucket'
         AWS_REGION      = 'ap-south-1'
         TARGET_EC2_IP   = '13.233.162.252 '// Since everything is running locally on this instance
         TOMCAT_USER     = 'ubuntu'
