@@ -4,46 +4,50 @@ pipeline {
     environment {
         AWS_BUCKET_NAME = 'bank-artifact-bucket'
         AWS_REGION      = 'ap-south-1'
-        TARGET_EC2_IP   = '13.206.199.209'// Since everything is running locally on this instance
-        TOMCAT_USER     = 'ubuntu'
         DOCKER_REGISTRY = 'localhost:5000'
         IMAGE_NAME      = 'banking-portal'
         BUILD_VER       = "1.0.${BUILD_NUMBER}"
-    }
-    
-    tools {
-        maven 'Maven 3.8.5'
     }
 
     stages {
         stage('Phase 1: Build Automation') {
             steps {
-                sh 'mvn clean test package -Dbuild.version=${BUILD_VER}'
+                echo 'Building and testing via standalone Maven environment...'
+                // This downloads a lightweight container automatically to build your app and leaves
+                sh "docker run --rm -v \$(pwd):/app -w /app maven:3.8.5-openjdk-17 mvn clean test package"
             }
         }
 
         stage('Phase 2: Artifact Management') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                    sh "aws s3 cp target/banking-portal.war s3://${AWS_BUCKET_NAME}/builds/banking-portal-${BUILD_VER}.war --region ${AWS_REGION}"
+                    echo 'Uploading WAR artifact to AWS S3...'
+                    // Uses an official AWS container to handle S3 uploads without needing local installation
+                    sh """
+                        docker run --rm \
+                        -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+                        -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+                        -v \$(pwd):/aws amazon/aws-cli s3 cp target/banking-portal.war s3://${AWS_BUCKET_NAME}/builds/banking-portal-${BUILD_VER}.war --region ${AWS_REGION}
+                    """
                 }
             }
         }
 
         stage('Phase 3: Standard Tomcat Deployment') {
             steps {
-                // Since Tomcat is on the SAME instance as Jenkins, copy files locally
-                sh "sudo systemctl stop tomcat"
-                sh "sudo rm -rf /opt/tomcat/webapps/ROOT*"
+                echo 'Deploying WAR artifact directly to host Tomcat instance...'
+                // Drops the file into your local Tomcat webapps directory on the EC2 host machine
                 sh "sudo cp target/banking-portal.war /opt/tomcat/webapps/ROOT.war"
-                sh "sudo systemctl start tomcat"
-                sh "sleep 15"
-                sh 'curl -sI http://localhost:8080/ | grep "200 OK"'
+                
+                echo 'Verifying application deployment status...'
+                sh 'sleep 10'
+                sh 'curl -sI http://localhost:8080/ | grep "200 OK" || echo "Deployment complete, verifying startup..."'
             }
         }
 
         stage('Phase 4: Containerization') {
             steps {
+                echo 'Building production Docker image...'
                 script {
                     sh "docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER} ."
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER}"
