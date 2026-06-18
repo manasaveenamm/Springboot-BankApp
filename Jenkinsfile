@@ -7,16 +7,13 @@ pipeline {
         DOCKER_REGISTRY = 'localhost:5000'
         IMAGE_NAME      = 'banking-portal'
         BUILD_VER       = "1.0.${BUILD_NUMBER}"
-        
-        // This maps the path directly to where the data lives on your EC2 host machine
         HOST_WORKSPACE  = "/var/lib/docker/volumes/jenkins_home/_data/workspace/${JOB_NAME}"
     }
 
     stages {
-       stage('Phase 1: Build Automation') {
+        stage('Phase 1: Build Automation') {
             steps {
-                echo 'Building and testing via standalone Maven environment...'
-                // Added -DskipTests to move forward seamlessly without needing a live DB server connection
+                echo 'Building via standalone Maven environment...'
                 sh "docker run --rm -v ${HOST_WORKSPACE}:/app -w /app maven:3.8.5-openjdk-17 mvn clean test package -DskipTests"
             }
         }
@@ -37,9 +34,10 @@ pipeline {
 
         stage('Phase 3: Standard Tomcat Deployment') {
             steps {
-                echo 'Deploying WAR artifact directly to host Tomcat instance...'
-                // Drops the built war file straight into your host's Tomcat folder
-                sh "cp target/banking-portal.war /opt/tomcat/webapps/ROOT.war"
+                echo 'Deploying WAR artifact to host Tomcat instance via container volume mapping...'
+                
+                // This mounts the real EC2 host Tomcat path into a container to drop the file successfully
+                sh "docker run --rm -v ${HOST_WORKSPACE}:/workspace -v /opt/tomcat/webapps:/host_tomcat alpine cp /workspace/target/banking-portal.war /host_tomcat/ROOT.war"
                 
                 echo 'Verifying application deployment status...'
                 sh 'sleep 10'
