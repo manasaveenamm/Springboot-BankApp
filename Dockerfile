@@ -1,37 +1,21 @@
-#----------------------------------
-# Stage 1
-#----------------------------------
+# Stage 1: Build environment (Matches your project compilation)
+FROM maven:3.8.5-openjdk-17 AS builder
+LABEL maintainer="manasa"
+WORKDIR /app
 
-# Import docker image with maven installed
-FROM maven:3.8.3-openjdk-17 as builder 
+# Copy the source code files safely
+COPY pom.xml .
+COPY src ./src
 
-# Add maintainer, so that new user will understand who had written this Dockerfile
-MAINTAINER Madhup Pandey<madhuppandey2908@gmail.com>
+# Compile and package the application artifact
+RUN mvn clean package -DskipTests
 
-# Add labels to the image to filter out if we have multiple application running
-LABEL app=bankapp
+# Stage 2: Clean production runtime deployment environment
+FROM eclipse-temurin:17-jre-alpine AS deployer
+WORKDIR /opt/tomcat/webapps/
 
-# Set working directory
-WORKDIR /src
+# Copy the built war file from Stage 1 into the runtime container
+COPY --from=builder /app/target/banking-portal.war ./ROOT.war
 
-# Copy source code from local to container
-COPY . /src
-
-# Build application and skip test cases
-RUN mvn clean install -DskipTests=true
-
-#--------------------------------------
-# Stage 2
-#--------------------------------------
-
-# Import small size java image
-FROM openjdk:17-alpine as deployer
-
-# Copy build from stage 1 (builder)
-COPY --from=builder /src/target/*.jar /src/target/bankapp.jar
-
-# Expose application port 
 EXPOSE 8080
-
-# Start the application
-ENTRYPOINT ["java", "-jar", "/src/target/bankapp.jar"]
+ENTRYPOINT ["java", "-jar", "ROOT.war"]
