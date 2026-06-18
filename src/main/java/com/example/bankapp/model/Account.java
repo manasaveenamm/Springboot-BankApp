@@ -25,7 +25,6 @@ public class Account implements UserDetails {
     private Collection<? extends GrantedAuthority> authorities;
 
     public Account() {
-
     }
 
     public Account(String username, String password, BigDecimal balance, List<Transaction> transactions, Collection<? extends GrantedAuthority> authorities) {
@@ -53,6 +52,7 @@ public class Account implements UserDetails {
         this.id = id;
     }
 
+    @Override
     public String getUsername() {
         return username;
     }
@@ -61,6 +61,7 @@ public class Account implements UserDetails {
         this.username = username;
     }
 
+    @Override
     public String getPassword() {
         return password;
     }
@@ -83,5 +84,27 @@ public class Account implements UserDetails {
 
     public void setTransactions(List<Transaction> transactions) {
         this.transactions = transactions;
+    }
+
+    // --- Mandatory Spring Security UserDetails Overrides ---
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
     }
 }
