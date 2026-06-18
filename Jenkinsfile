@@ -7,14 +7,17 @@ pipeline {
         DOCKER_REGISTRY = 'localhost:5000'
         IMAGE_NAME      = 'banking-portal'
         BUILD_VER       = "1.0.${BUILD_NUMBER}"
+        
+        // This maps the path directly to where the data lives on your EC2 host machine
+        HOST_WORKSPACE  = "/var/lib/docker/volumes/jenkins_home/_data/workspace/${JOB_NAME}"
     }
 
     stages {
         stage('Phase 1: Build Automation') {
             steps {
                 echo 'Building and testing via standalone Maven environment...'
-                // This downloads a lightweight container automatically to build your app and leaves
-                sh "docker run --rm -v \$(pwd):/app -w /app maven:3.8.5-openjdk-17 mvn clean test package"
+                // Uses the explicit host path to mount your pom.xml accurately
+                sh "docker run --rm -v ${HOST_WORKSPACE}:/app -w /app maven:3.8.5-openjdk-17 mvn clean test package"
             }
         }
 
@@ -22,12 +25,11 @@ pipeline {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                     echo 'Uploading WAR artifact to AWS S3...'
-                    // Uses an official AWS container to handle S3 uploads without needing local installation
                     sh """
                         docker run --rm \
                         -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
                         -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
-                        -v \$(pwd):/aws amazon/aws-cli s3 cp target/banking-portal.war s3://${AWS_BUCKET_NAME}/builds/banking-portal-${BUILD_VER}.war --region ${AWS_REGION}
+                        -v ${HOST_WORKSPACE}:/aws amazon/aws-cli s3 cp target/banking-portal.war s3://${AWS_BUCKET_NAME}/builds/banking-portal-${BUILD_VER}.war --region ${AWS_REGION}
                     """
                 }
             }
@@ -36,8 +38,8 @@ pipeline {
         stage('Phase 3: Standard Tomcat Deployment') {
             steps {
                 echo 'Deploying WAR artifact directly to host Tomcat instance...'
-                // Drops the file into your local Tomcat webapps directory on the EC2 host machine
-                sh "sudo cp target/banking-portal.war /opt/tomcat/webapps/ROOT.war"
+                // Drops the built war file straight into your host's Tomcat folder
+                sh "cp target/banking-portal.war /opt/tomcat/webapps/ROOT.war"
                 
                 echo 'Verifying application deployment status...'
                 sh 'sleep 10'
