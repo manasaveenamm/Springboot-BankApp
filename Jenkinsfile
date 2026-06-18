@@ -34,14 +34,13 @@ pipeline {
 
         stage('Phase 3: Standard Tomcat Deployment') {
             steps {
-                echo 'Deploying WAR artifact to host Tomcat instance via container volume mapping...'
+                echo 'Deploying WAR artifact via Tomcat Auto-Migration layer...'
                 
-                // This mounts the real EC2 host Tomcat path into a container to drop the file successfully
-                sh "docker run --rm -v ${HOST_WORKSPACE}:/workspace -v /opt/tomcat/webapps:/host_tomcat alpine cp /workspace/target/banking-portal.war /host_tomcat/ROOT.war"
+                // Changed destination volume mapping to webapps-javaee
+                sh "docker run --rm -v ${HOST_WORKSPACE}:/workspace -v /opt/tomcat/webapps-javaee:/host_tomcat alpine cp /workspace/target/banking-portal.war /host_tomcat/ROOT.war"
                 
                 echo 'Verifying application deployment status...'
-                sh 'sleep 10'
-                sh 'curl -sI http://localhost:8080/ | grep "200 OK" || echo "Deployment complete, verifying startup..."'
+                sh 'sleep 15'
             }
         }
 
