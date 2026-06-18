@@ -49,7 +49,13 @@ pipeline {
             steps {
                 echo 'Building production Docker image...'
                 script {
+                    // 1. Build the specific versioned image
                     sh "docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER} ."
+                    
+                    // 2. CREATE the 'latest' tag pointing to the version we just built
+                    sh "docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
+                    
+                    // 3. Now both pushes will succeed perfectly!
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_VER}"
                     sh "docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest"
                 }
